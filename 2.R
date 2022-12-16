@@ -1,3 +1,4 @@
+# a much more complex dataset - solubility cats
 library(caret)
 library(vegan)
 library(ggplot2)
@@ -5,12 +6,17 @@ library(mlbench)
 library(MLeval)
 
 # runtime vars
-data(PimaIndiansDiabetes, package = "mlbench") ; df = PimaIndiansDiabetes ; rm("PimaIndiansDiabetes")
-#df = iris
-#data("BreastCancer") ; df = BreastCancer ; rm("BreastCancer")
+df = read.csv("sol.csv")
+df = df[df$sol_category != 1,]
+df$sol_category = ifelse(df$sol_category == 0, "pos", "neg") # need class label of pos
+df$sol_category = as.factor(df$sol_category)
+# sample to even
+df = downSample(x = df[, -ncol(df)],
+                         y = df$sol_category)
+
 set.seed(123)
-seed_n = 4
-loop_n = 2
+seed_n = 50
+loop_n = 50
 train_frac = 0.7
 class_col = ncol(df) # always last
 
@@ -21,9 +27,9 @@ class_col = ncol(df) # always last
 
 ##### 1 - test:train split
 train_i = createDataPartition(df[,class_col],
-                                   p = train_frac,
-                                   list = FALSE,
-                                   times = 1)
+                              p = train_frac,
+                              list = FALSE,
+                              times = 1)
 train_n = length(train_i)
 train = df[train_i, ]
 test = df[-train_i, ]
@@ -41,7 +47,7 @@ mds = data.frame(prcomp(train[,1:(class_col - 1)], center = TRUE,scale. = TRUE)$
 
 # plot and save full
 g = ggplot(mds, aes(x = PC1, y = PC2, colour = train[,class_col]) ) +
-       geom_point() + theme_classic()
+  geom_point() + theme_classic()
 ggsave("0_all_labs_pc12.png", plot = g, device = "png")
 g = ggplot(mds, aes(x = PC1, y = PC3, colour = train[,class_col]) ) +
   geom_point() + theme_classic()
@@ -52,7 +58,7 @@ ggsave("0_all_labs_pc23.png", plot = g, device = "png")
 
 
 # plot the current known
-ggplot(mds[which_tested,], aes(x = PC1, y = PC2, colour = train[which_tested,class_col] )) +
+ggplot(mds[which_tested,], aes(x = PC1, y = PC2, colour = as.factor(train[which_tested,class_col] ))) +
   geom_point() +
   geom_point(data = mds[-which_tested,], colour = "grey" ,alpha = 0.1) +
   theme_classic() +
@@ -61,21 +67,21 @@ ggsave("z_init.png", device = "png")
 
 # so now train a classifier, how well does it do?
 fit_control = trainControl(method = "cv", 
-                                 number = 2, 
-                                 savePredictions = TRUE, 
-                                 classProbs = TRUE, 
-                                 verboseIter = TRUE)
+                           number = 10, 
+                           savePredictions = TRUE, 
+                           classProbs = TRUE, 
+                           verboseIter = TRUE)
 rf_fit = suppressWarnings({
   train(y = as.factor(train[which_tested, class_col]), 
-                x = train[which_tested,1:(class_col - 1)], 
-                na.action  = na.pass,
-                method = "rf",
-               control = fit_control)
-  })
-                
+        x = train[which_tested,1:(class_col - 1)], 
+        na.action  = na.pass,
+        method = "rf",
+        control = fit_control)
+})
+
 model_test_prob = predict(rf_fit, test[,1:(class_col - 1)], type =  "prob")
 # extra fluff is just to suppress figures
-t = MLeval::evalm( data.frame(model_test_prob, test[,class_col]) , plots = F, silent = T)
+t = MLeval::evalm(data.frame(model_test_prob, as.factor(test[,class_col])) , plots = F)
 AUC_ROC_random = t$stdres$Group1$Score[13]
 AUC_ROC_uncertainty = AUC_ROC_random
 
@@ -115,14 +121,14 @@ for(i in 1:10){
   AUC_ROC_uncertainty = c(AUC_ROC_uncertainty, t$stdres$Group1$Score[13])
   
   # plot the current known
-  ggplot(mds[which_tested_uncertainty,], aes(x = PC1, y = PC2, colour = train[which_tested_uncertainty,class_col] )) +
+  ggplot(mds[which_tested_uncertainty,], aes(x = PC1, y = PC2, colour = as.factor(train[which_tested_uncertainty,class_col] ))) +
     geom_point() +
     geom_point(data = mds[-which_tested_uncertainty,], colour = "grey" ,alpha = 0.1) +
     theme_classic() +
     labs(colour = "class", subtitle = "")
   ggsave(paste0("z_uncert_",i,".png"),device = "png")
   # plot the current known
-  ggplot(mds[which_tested_random,], aes(x = PC1, y = PC2, colour = train[which_tested_random,class_col] )) +
+  ggplot(mds[which_tested_random,], aes(x = PC1, y = PC2, colour = as.factor(train[which_tested_random,class_col] ))) +
     geom_point() +
     geom_point(data = mds[-which_tested_random,], colour = "grey" ,alpha = 0.1) +
     theme_classic() +
@@ -130,7 +136,7 @@ for(i in 1:10){
   ggsave(paste0("z_rand_",i,".png"),device = "png")
   
   print(paste(AUC_ROC_random[length(AUC_ROC_random)],
-        AUC_ROC_uncertainty[length(AUC_ROC_uncertainty)]))
+              AUC_ROC_uncertainty[length(AUC_ROC_uncertainty)]))
 }
 
 ggplot() +
